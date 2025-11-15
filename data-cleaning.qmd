@@ -3,3 +3,5 @@ title: Data Cleaning
 format: typst
 ---
 
+```{r setup}
+library(tidyverse)

@@ -1,28 +1,135 @@
----
-title: Exploratory Data Analysis
+title: "Exploratory Data Analysis"
 format: typst
 ---
 
-### Question 1
+```{r setup}
+library(tidyverse)
 
-Put your question here.
+# read precinct-level statement-of-vote data
+g24_prec <- readr::read_csv("data/g24_sov_by_g24_svprec.csv")
 
-### Answer 1
+# keep and clean the congressional vote columns
+g24_cng <- g24_prec |>
+  mutate(
+    CNGDEM01 = as.numeric(CNGDEM01),
+    CNGREP01 = as.numeric(CNGREP01),
+    CNGIND01 = as.numeric(CNGIND01)
+  )
 
-Put your answer here.
+# build a district-level summary we can reuse for all questions
+district_results <- g24_cng |>
+  filter(CDDIST != 0) |>             # drop statewide total row (CDDIST == 0)
+  group_by(CDDIST) |>
+  summarise(
+    dem_votes = sum(CNGDEM01, na.rm = TRUE),
+    rep_votes = sum(CNGREP01, na.rm = TRUE),
+    ind_votes = sum(CNGIND01, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(
+    total_votes = dem_votes + rep_votes + ind_votes,
+    dem_share = dem_votes / (dem_votes + rep_votes),
+    rep_share = rep_votes / (dem_votes + rep_votes),
+    winner_party = if_else(dem_share > rep_share, "DEM", "REP"),
+    margin = abs(dem_share - rep_share)
+  )
 
-### Question 2
 
-Put your question here.
+```
 
-### Answer 2
 
-Put your answer here.
+Question 1
 
-### Question 3
+How many congressional seats did each party win in 2024, and how does that compare to their statewide share of the two-party vote?
 
-Put your question here.
+number of seats by party
 
-### Answer 3
+seat_counts <- district_results |>
+count(winner_party, name = "n_seats")
 
-Put your answer here.
+seat_counts
+
+statewide vote totals and shares (two-party only)
+
+statewide_totals <- district_results |>
+summarise(
+dem_votes = sum(dem_votes),
+rep_votes = sum(rep_votes)
+) |>
+mutate(
+dem_share_statewide = dem_votes / (dem_votes + rep_votes),
+rep_share_statewide = rep_votes / (dem_votes + rep_votes)
+)
+
+statewide_totals
+
+Answer 1
+
+Using the district-level summaries, Democrats win 43 of the 52 congressional seats (about 82.7%), while Republicans win 9 seats (about 17.3%).
+
+Statewide, however, Democrats receive about 60.7% of the two-party vote for Congress, and Republicans receive about 39.3%.
+So Democrats win a noticeably larger share of seats than their share of the vote, while Republicans win fewer seats than their vote share would suggest.
+
+Question 2
+
+Which districts had the closest races in 2024, and what were the winning margins?
+
+
+closest_races <- district_results |>
+arrange(margin) |>
+mutate(margin_pct = 100 * margin) |>
+slice_head(n = 5)
+
+closest_races
+
+Answer 2
+
+Looking at the difference in two-party vote share between the winner and the runner-up:
+
+District 45 is the closest race:
+the Democrat receives 158,216 votes and the Republican 157,522 votes, a margin of only about 0.2 percentage points.
+
+Other very close races include
+
+District 27 (margin ≈ 2.7 percentage points),
+
+District 47 (margin ≈ 2.9 points),
+
+District 13 (margin ≈ 3.1 points), and
+
+District 41 (margin ≈ 3.3 points, won by the Republican).
+
+These districts would be the most competitive under the 2024 map.
+
+Question 3
+
+How are Democratic vote shares across districts distributed? Are most districts competitive, or are many seats “safe” for one party?
+
+library(ggplot2)
+
+summary stats for Democratic share across districts
+
+summary(district_results$dem_share)
+
+histogram of dem_share
+
+ggplot(district_results, aes(x = dem_share)) +
+geom_histogram(binwidth = 0.05) +
+scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
+labs(
+x = "Democratic two-party vote share",
+y = "Number of districts",
+title = "Distribution of Democratic vote share across districts (2024)"
+)
+
+Answer 3
+
+Across districts, the Democratic two-party vote share has:
+
+a median around 63%,
+
+an interquartile range from roughly 52% to 69%, and
+
+extremes ranging from 0% (solid Republican districts) to 100% (uncontested Democratic districts).
+
+The histogram shows that many districts are not very competitive: a large share of districts are strongly Democratic, a smaller group are strongly Republican, and only a handful fall near the 50–50 range. This pattern suggests a map with many “safe” seats and relatively few true swing districts.

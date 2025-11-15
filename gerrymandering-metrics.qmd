@@ -3,9 +3,66 @@ title: Gerrymandering Metrics
 format: typst
 ---
 
-### 2024 Election Results and the 2024 District Map
+```{r setup}
+library(tidyverse)
 
+# Read the RAW precinct-level data directly
+# (make sure this path matches your repo: usually "data/g24_sov_by_g24_svprec.csv")
+g24_raw <- readr::read_csv("data/g24_sov_by_g24_svprec.csv")
 
+# Do minimal cleaning here so this document is self-contained
+g24_clean <- g24_raw |>
+  # keep only 2024 general election, precinct-level rows
+  filter(ELECTION == "g24", GEO_TYPE == "svprec") |>
+  # drop statewide summary rows where district is 0
+  filter(CDDIST != 0) |>
+  # make vote columns numeric and replace NAs with 0
+  mutate(
+    CNGDEM01 = replace_na(as.numeric(CNGDEM01), 0),
+    CNGDEM02 = replace_na(as.numeric(CNGDEM02), 0),
+    CNGREP01 = replace_na(as.numeric(CNGREP01), 0),
+    CNGREP02 = replace_na(as.numeric(CNGREP02), 0)
+  )
 
-### 2024 Election Results and the proposed 2025 District Map
+# Build district-level results for the 2024 congressional map
+cng_2024 <- g24_clean |>
+  group_by(CDDIST) |>
+  summarise(
+    dem_votes  = sum(CNGDEM01 + CNGDEM02, na.rm = TRUE),
+    rep_votes  = sum(CNGREP01 + CNGREP02, na.rm = TRUE),
+    total_votes = dem_votes + rep_votes,
+    dem_share  = dem_votes / (dem_votes + rep_votes),
+    rep_share  = rep_votes / (dem_votes + rep_votes),
+    .groups = "drop"
+  )
 
+# Function: mean–median score (Democratic vote share)
+mean_median_score <- function(dem_share) {
+  mean(dem_share) - median(dem_share)
+}
+
+# Function: efficiency gap
+# EG = (wasted_D - wasted_R) / total_votes
+# positive EG => Republican advantage
+efficiency_gap <- function(dem_votes, rep_votes) {
+  total      <- dem_votes + rep_votes
+  half_plus1 <- floor(total / 2) + 1
+
+  dem_wasted <- ifelse(
+    dem_votes > rep_votes,
+    dem_votes - half_plus1,  # wins
+    dem_votes                # losses
+  )
+
+  rep_wasted <- ifelse(
+    rep_votes > dem_votes,
+    rep_votes - half_plus1,  # wins
+    rep_votes                # losses
+  )
+
+  tibble(
+    total_dem_wasted = sum(dem_wasted),
+    total_rep_wasted = sum(rep_wasted),
+    efficiency_gap   = (total_dem_wasted - total_rep_wasted) / sum(total)
+  )
+}
